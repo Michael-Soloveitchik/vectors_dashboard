@@ -44,6 +44,7 @@ IDS = SimpleNamespace(
     # one intent store per selection source (callbacks/selection.py)
     int_lasso="int-lasso", int_classes="int-classes", int_click="int-click",
     int_insp="int-insp", int_reset="int-reset",
+    op_pick="op-pick",                    # {"label", "seq"}: a ROC spot was clicked
     store_mods="store-mods",              # {ctrl, shift} at the last mouse-down
     lasso_echo="lasso-echo",              # bumped when a gesture is ignored
     ctrl_color_auto="ctrl-color-auto",   # toggles: auto range / abs
@@ -55,7 +56,11 @@ IDS = SimpleNamespace(
     fig_scatter="fig-scatter", sub_scatter="sub-scatter",
     ctrl_reduction="ctrl-reduction", ctrl_perplexity="ctrl-perplexity",
     ctrl_n_neighbors="ctrl-n-neighbors", ctrl_min_dist="ctrl-min-dist",
-    wrap_tsne="wrap-tsne", wrap_umap="wrap-umap",
+    wrap_tsne="wrap-tsne", wrap_umap="wrap-umap", wrap_ptsne="wrap-ptsne",
+    btn_ptsne_train="btn-ptsne-train", ptsne_status="ptsne-status",
+    store_ptsne="store-ptsne",            # {"model", "perplexity", "points", "rounds"}
+    ctrl_click_mode="ctrl-click-mode",    # plain click: inspect | select
+    ctrl_ellipse_sigma="ctrl-ellipse-sigma", wrap_sigma="wrap-sigma",
     ctrl_scatter_opts="ctrl-scatter-opts", ctrl_max_points="ctrl-max-points",
     ctrl_color_by="ctrl-color-by",        # "class" or any label column
 
@@ -70,6 +75,7 @@ IDS = SimpleNamespace(
 
     # distribution card
     fig_dist="fig-dist", sub_dist="sub-dist", ctrl_dist_view="ctrl-dist-view",
+    ctrl_score_domain="ctrl-score-domain",   # normalized | raw
 
     # inspector drawer
     inspector="inspector", inspector_body="inspector-body",

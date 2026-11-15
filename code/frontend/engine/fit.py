@@ -13,7 +13,8 @@ from .data import ModelFrame
 
 def _skip_mask(frame: ModelFrame, label_keys, y, skip) -> np.ndarray:
     """True = keep for fit. A row is skipped if its class label, any of its
-    label-column values or its session id is in ``skip``."""
+    label-column values or its session id is in ``skip``, or if it matches
+    a ``column=value`` entry (any column: gender=female, language=fa…)."""
     keep = np.ones(frame.n, dtype=bool)
     if not skip:
         return keep
@@ -22,6 +23,10 @@ def _skip_mask(frame: ModelFrame, label_keys, y, skip) -> np.ndarray:
     for col in list(label_keys) + ["session_id"]:
         if col in frame.df.columns:
             keep &= ~frame.df[col].astype(str).isin(s).to_numpy()
+    for entry in s:
+        col, eq, val = entry.partition("=")
+        if eq and col in frame.df.columns:
+            keep &= ~(frame.df[col].astype(str) == val).to_numpy()
     return keep
 
 

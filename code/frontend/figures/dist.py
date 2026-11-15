@@ -7,8 +7,13 @@ the resulting false-reject / false-accept rates printed in the lane.
 
     hist   target area in the class colour, non-target in grey
            (each scaled to its own peak)
+    box    target / non-target as box plots (quartiles, whiskers 5–95 %)
     strip  individual samples coloured by their TRUE class — shows which
            class the impostors come from
+
+``domain="raw"`` draws the methodology's raw scores instead (one common
+axis, real values on the ticks); thresholds stay defined on normalized
+scores and are shown where they fall among the raw ones.
 """
 from __future__ import annotations
 
@@ -20,7 +25,7 @@ from ..theme import base_layout, class_colors, rgba, tokens
 from .common import XY, dyn
 
 BINS = 48
-LANE_PX = {"hist": 62, "strip": 78}
+LANE_PX = {"hist": 62, "strip": 78, "box": 54}
 RUG_CAP = 400
 
 
@@ -37,37 +42,71 @@ def _step_poly(h: np.ndarray, edges: np.ndarray, base: float):
             np.concatenate([base - ys, [base]]))
 
 
-def _rates(an: Analysis, P: np.ndarray, tv: np.ndarray) -> list[str]:
+def _rates(an: Analysis, P: np.ndarray, tv: np.ndarray, shown) -> list[str]:
     out = []
     for k in range(an.k):
         pos = an.true_idx == k
         acc = P[:, k] >= tv[k]
         fr = float((~acc & pos).sum() / max(pos.sum(), 1))
         fa = float((acc & ~pos).sum() / max((~pos).sum(), 1))
-        out.append(f"thr {tv[k]:.3f}<br>FR {fr:.1%} · FA {fa:.1%}")
+        out.append(f"thr {shown[k]:.3f}<br>FR {fr:.1%} · FA {fa:.1%}")
     return out
+
+
+def _boundary(p: np.ndarray, x: np.ndarray, t: float) -> float:
+    """Where the threshold ``p >= t`` falls on another (monotone) scale x."""
+    acc = p >= t
+    if acc.all() or not acc.any():
+        rising = x[np.argmax(p)] >= x[np.argmin(p)]
+        low = acc.all() == bool(rising)        # everything is above / below
+        return float(x.min() if low else x.max())
+    a, r = x[acc], x[~acc]
+    return float((a.min() + r.max()) / 2 if a.min() >= r.max()
+                 else (a.max() + r.min()) / 2)
+
+
+def _five(v: np.ndarray) -> list:
+    return (np.percentile(v, [5, 25, 50, 75, 95]).tolist() if v.size
+            else [None] * 5)
 
 
 def dist_fig(an: Analysis, *, alpha, thr: dict | None, theme,
              view: str = "hist", sel_rows: list[int] | None = None,
-             focus_rows: list[int] | None = None) -> go.Figure:
+             focus_rows: list[int] | None = None,
+             domain: str = "norm") -> go.Figure:
     t = tokens(theme)
-    P = an.norm(alpha)
+    Pn = an.norm(alpha)
     K = an.k
     cmap = class_colors(sorted(set(an.y.tolist())))
     tv = an.thr_vector(thr)
     edges = np.linspace(0.0, 1.0, BINS + 1)
+    raw = domain == "raw"
+    if raw:           # raw scores on a common [0, 1] display scale
+        R = np.asarray(an.raw, dtype=float)
+        lo, hi = float(np.nanmin(R)), float(np.nanmax(R))
+        P = (R - lo) / ((hi - lo) or 1.0)
+        tx_k = [_boundary(Pn[:, k], P[:, k], tv[k]) for k in range(K)]
+        real = lambda v: lo + np.asarray(v) * ((hi - lo) or 1.0)  # noqa: E731
+    else:
+        P, tx_k, real = Pn, [float(v) for v in tv], lambda v: v  # noqa: E731
     fig = go.Figure()
     # Invisible click targets along every lane: click = that class's
     # threshold moves there (callbacks/select.py). Drawn first, so real
     # points keep hover priority.
     gx = np.linspace(0.0, 1.0, 101)
+
+    def as_thr(k: int) -> np.ndarray:      # display x → normalized threshold
+        if not raw:
+            return gx
+        o = np.argsort(P[:, k])
+        return np.interp(gx, P[o, k], Pn[o, k])
     fig.add_trace(go.Scatter(
         x=np.tile(gx, K), y=np.repeat(np.arange(K), gx.size) + 0.0,
         mode="markers", marker=dict(size=14, opacity=0.001, color=t["gold"]),
-        customdata=[[lbl, float(v)] for lbl in an.labels for v in gx],
+        customdata=[[lbl, float(v)] for k, lbl in enumerate(an.labels)
+                    for v in as_thr(k)],
         hovertemplate="<b>%{customdata[0]}</b><br>click: threshold → "
-                      "%{x:.2f}<extra></extra>",
+                      "%{customdata[1]:.2f}<extra></extra>",
         showlegend=False, name="lane-click"))
 
     if view == "strip":
@@ -90,6 +129,24 @@ def dist_fig(an: Analysis, *, alpha, thr: dict | None, theme,
                 customdata=np.asarray(an.labels, dtype=object)[lane],
                 hovertemplate=(f"true <b>{lbl}</b><br>scored by "
                                "%{customdata}<br>%{x:.3f}<extra></extra>")))
+    elif view == "box":
+        non = np.array([_five(P[an.true_idx != k, k]) for k in range(K)],
+                       dtype=object)
+        keys = ("lowerfence", "q1", "median", "q3", "upperfence")
+        fig.add_trace(go.Box(
+            y=[k + 0.19 for k in range(K)], orientation="h", width=0.3,
+            name="non-target", hoverinfo="x", showlegend=False,
+            line=dict(color=rgba(t["neutral"], 0.9), width=1),
+            fillcolor=rgba(t["neutral"], 0.28),
+            **{q: non[:, i].tolist() for i, q in enumerate(keys)}))
+        for k, lbl in enumerate(an.labels):
+            col = cmap.get(lbl, t["neutral"])
+            five = _five(P[an.true_idx == k, k])
+            fig.add_trace(go.Box(
+                y=[k - 0.19], orientation="h", width=0.3, hoverinfo="x",
+                name=f"{lbl} target", legendgroup=lbl, showlegend=False,
+                line=dict(color=col, width=1.4), fillcolor=rgba(col, 0.42),
+                **{q: [five[i]] for i, q in enumerate(keys)}))
     else:
         nx, ny = [], []
         for k, lbl in enumerate(an.labels):
@@ -118,14 +175,15 @@ def dist_fig(an: Analysis, *, alpha, thr: dict | None, theme,
 
     tx, ty = [], []
     for k in range(K):
-        tx += [tv[k], tv[k], None]
+        tx += [tx_k[k], tx_k[k], None]
         ty += [k - 0.46, k + 0.46, None]
     fig.add_trace(go.Scatter(
         x=tx, y=ty, mode="lines", name="threshold", hoverinfo="skip",
         line=dict(color=t["gold"], width=2, dash="dot"), meta=dyn(thr=XY)))
     fig.add_trace(go.Scatter(
         x=[1.035] * K, y=list(range(K)), mode="text",
-        text=_rates(an, P, tv), textposition="middle right",
+        text=_rates(an, Pn, tv, real(tx_k) if raw else tv),
+        textposition="middle right",
         textfont=dict(size=10, color=t["muted"]),
         hoverinfo="skip", showlegend=False, name="rates",
         meta=dyn(thr=["text"])))
@@ -151,18 +209,23 @@ def dist_fig(an: Analysis, *, alpha, thr: dict | None, theme,
         mode="markers", name="inspected", showlegend=False,
         marker=dict(symbol=[s for s in ("diamond", "diamond-open")[:len(fr)]
                             for _ in range(K)],
-                    size=11, color=t["gold"],
-                    line=dict(width=1.6, color=t["gold"])),
+                    size=11, color=t["ring"],
+                    line=dict(width=1.6, color=t["ring"])),
         hovertemplate="inspected · %{x:.3f}<extra></extra>",
         meta=dyn(foc=XY + ["marker.symbol"])))
 
     fig.update_layout(**base_layout(
         theme,
-        xaxis=dict(title=dict(text=f"normalized score   (α = "
-                                   f"{float(alpha if alpha is not None else 1):.2f})"),
+        xaxis=dict(title=dict(
+            text=f"raw {an.spec.methodology} score" if raw else
+            f"normalized score   (α = "
+            f"{float(alpha if alpha is not None else 1):.2f})"),
                    range=[-0.02, 1.33], zeroline=False, minallowed=-0.1,
                    maxallowed=1.45,
-                   tickmode="array", tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0]),
+                   tickmode="array", tickvals=[0, 0.2, 0.4, 0.6, 0.8, 1.0],
+                   **({"ticktext": [f"{v:.3g}" for v in
+                                    real([0, 0.2, 0.4, 0.6, 0.8, 1.0])]}
+                      if raw else {})),
         yaxis=dict(tickmode="array", tickvals=list(range(K)),
                    ticktext=an.labels, range=[K - 0.5, -0.5],
                    minallowed=-0.6, maxallowed=K - 0.4,
@@ -180,5 +243,5 @@ def dist_fig(an: Analysis, *, alpha, thr: dict | None, theme,
         legend=dict(orientation="h", x=0, y=1.0, yanchor="bottom",
                     xanchor="left"),
         margin=dict(l=8, r=10, t=26 if view == "strip" else 6, b=38),
-        uirevision=f"dist|{an.frame.name}|{view}|{K}"))
+        uirevision=f"dist|{an.frame.name}|{view}|{domain}|{K}"))
     return fig

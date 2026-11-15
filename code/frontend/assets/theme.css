@@ -1,0 +1,82 @@
+/* Windows 11 widget polish on top of style.css: quiet acrylic cards with a
+   lit top edge, soft header fades, one accent. Nothing moves by itself. */
+:root, :root[data-theme="dark"] {
+  --ring: #4d7cff;
+  --fade: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0) 78%);
+}
+:root[data-theme="light"] {
+  --ring: #1e3a8a;
+  --fade: linear-gradient(180deg, rgba(255,255,255,.8), rgba(255,255,255,0) 78%);
+}
+:root { --r-lg: 12px; --r-md: 8px; --r-sm: 5px; --blur: blur(30px) saturate(140%); }
+
+/* surfaces */
+.topbar, .sidebar, .card, .drawer, .dock { border-top-color: var(--border-strong); }
+.card-head, .drawer-head, .dock-head { background: var(--fade); }
+.card { transition: border-color .2s ease, box-shadow .2s ease; }
+.card:hover { border-color: var(--border-strong); }
+.card-title::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); margin-right: 8px; vertical-align: 2px; }
+.sec-title { border-left: 3px solid var(--accent); padding-left: 8px; border-radius: 1px; }
+
+/* controls */
+.btn { border-bottom-color: var(--border-strong); transition: background .15s ease, border-color .15s ease, transform .08s ease; }
+.btn:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.btn:active { transform: translateY(1px); }
+.chip { transition: border-color .15s ease; }
+.chip:hover { border-color: var(--border-strong); }
+.btn:focus-visible, .num:focus-visible, .theme-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dash-slider-thumb { width: 14px !important; height: 14px !important; border-radius: 50% !important;
+  background: var(--accent) !important; border: 3px solid var(--solid) !important;
+  box-shadow: 0 0 0 1px var(--border-strong), 0 1px 4px rgba(0,0,0,.3) !important; }
+.sidebar { scrollbar-width: thin; }
+
+/* light / dark switch (top right): the knob slides under the active icon */
+.theme-switch { position: relative; flex: 0 0 auto; width: 56px; height: 26px; padding: 0 8px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: space-between;
+  border: 1px solid var(--border-strong); border-radius: 999px; background: var(--raised); box-shadow: var(--shine); }
+.ts-ico { position: relative; z-index: 1; font-size: 12.5px; line-height: 1; color: var(--muted); transition: color .2s ease; }
+.ts-knob { position: absolute; top: 2px; left: 3px; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,.35); transition: transform .22s cubic-bezier(.4,0,.2,1); }
+:root[data-theme="dark"] .ts-knob { transform: translateX(28px); }
+:root[data-theme="light"] .ts-sun, :root[data-theme="dark"] .ts-moon { color: var(--accent-ink); }
+
+/* fades */
+@keyframes vd-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.drawer.open, .dock { animation: vd-in .2s ease both; }
+.card { animation: vd-in .3s ease both; }
+.card:nth-child(2) { animation-delay: .04s; } .card:nth-child(3) { animation-delay: .08s; }
+.card:nth-child(4) { animation-delay: .12s; }
+@media (prefers-reduced-motion: reduce) { .card, .drawer.open, .dock { animation: none; } * { transition: none !important; } }
+
+/* small helpers */
+.tool-label { color: var(--muted); font-size: 10.5px; white-space: nowrap; }
+.btn, .sync, .chip { white-space: nowrap; }
+.topbar > .btn { flex: 0 0 auto; }
+
+/* gesture hints: one ⓘ per card */
+.tip { position: relative; color: var(--muted); cursor: help; font: italic 700 11px/16px Georgia, serif; width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border-strong); border-radius: 50%; flex: 0 0 auto; }
+.tip-body { font: normal 400 11px/1.75 "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif; }
+.tip:hover, .tip:focus { color: var(--accent); outline: 0; }
+.tip-body { display: none; position: absolute; right: 0; top: 100%; margin-top: 6px; z-index: 70; padding: 8px 12px;
+  border-radius: var(--r-md); background: var(--solid); border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow); color: var(--text); font-size: 11px; line-height: 1.75; white-space: nowrap; }
+.tip:hover .tip-body, .tip:focus .tip-body { display: block; }
+/* matrix "sort by": the keys carry their order */
+#ctrl-matrix-sort .dash-dropdown-value { counter-reset: sortkey; }
+#ctrl-matrix-sort .dash-dropdown-value-item { counter-increment: sortkey; }
+#ctrl-matrix-sort .dash-dropdown-value-item::before { content: counter(sortkey); display: inline-flex;
+  align-items: center; justify-content: center; width: 14px; height: 14px; margin-right: 4px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-ink); font-size: 9px; font-weight: 700; }
+.slider-marked { margin-bottom: 12px; }
+body.vd-dragging, body.vd-dragging * { cursor: grabbing !important; }
+
+/* full screen: one panel as a big window over the page */
+.ico-max { display: inline-block; width: 10px; height: 10px; border: 1.6px solid currentColor; border-radius: 2px; vertical-align: -1px; }
+.card.max { position: fixed; inset: 16px; z-index: 90; background: var(--glass-strong); animation: vd-in .18s ease both; }
+.card.max .max-btn { color: var(--accent); border-color: var(--accent); }
+body.vd-max::before { content: ""; position: fixed; inset: 0; z-index: 85; background: rgba(0,0,0,.5);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.dash-dropdown-content, .dash-dropdown-options { z-index: 120 !important; }
+.slider-marked { margin: 0 12px 12px; }

@@ -9,6 +9,7 @@ from dash import html
 from .engine import Analysis, DataHub, state
 from .engine import curves as cv
 from .engine import matrix as mx
+from .audio import ROW_PX
 from .theme import class_colors
 
 SKIP_META = {"session_id", "model_name"}
@@ -124,8 +125,8 @@ def _row_item(an: Analysis, row: int, d, P, tv, cmap, role: str = "") -> html.Di
 
 
 def audio_view(hub: DataHub, an: Analysis, rows: list[int]) -> list:
-    if not hub.has_audio:
-        return note("no audio — pass wav_dir=… to Gui to listen here")
+    if not hub.has_audio:        # no dock at all (Gui(wav_dir=…) adds audio)
+        return []
     have = [r for r in rows if hub.wav_path(an.frame.sids[r]) is not None]
     if not have:
         return note("no wav file found for this vector")
@@ -133,10 +134,9 @@ def audio_view(hub: DataHub, an: Analysis, rows: list[int]) -> list:
     # relative URL: the page may be served under /proxy/<port>/
     src = (f"_wavlens?model={quote(an.frame.name)}"
            f"&rows={','.join(map(str, have))}&names={quote(names)}")
-    return [html.Div("audio  ·  WavLens — wheel = zoom · click = seek · "
-                     "space = play · FFT = spectrogram", className="insp-h"),
-            html.Iframe(src=src, className="wavlens",
-                        style={"height": f"{122 + 88 * (len(have) + (len(have) > 1))}px"})]
+    rows_drawn = len(have) + (len(have) > 1)         # + the mix row
+    return [html.Iframe(src=src, className="wavlens",
+                        style={"height": f"{112 + ROW_PX * rows_drawn}px"})]
 
 
 def rows_view(an: Analysis, rows: list[int], thr, alpha) -> list:

@@ -72,3 +72,8 @@ Next: see the 100-play result in the session summary.
 Result: Blue bloom wallpaper, blue-tinted acrylic with grain, widget-style cards, softened class palette, blue heat-map ramp (replaces Viridis). 100-play audit: 100/100, 1,033 transactions, 0 persistent disagreements. test_engine / test_concurrency / test_cases pass; run.ipynb executes with its kernel; real-data smoke (WavLens, labelling, 46k model) passes.
 Files changed: code/frontend/assets/style.css, theme.py, figures/{matrix,scatter}.py, .gitignore (new).
 Next: push — no git remote exists for this project yet.
+
+[2026-11-15 19:30] Done: Audio dock + stats column, Windows-style theme, p-t-SNE, restored old features, full screen, ROC spot drag; both repos on GitHub.
+Result: WavLens sits in a full-width dock under the panels (foldable), stats in a narrow right column. p-t-SNE with a train button (300 steps ≈ 5 s on 325 vectors). Restored from the old frontend: click-to-select (switch), covariance ellipses, box view, raw scores, column=value filters. New: numbered sort keys, per-panel full screen, drag a ROC spot along its curve, dark-blue ring for the clicked vector, sun / moon switch, "score scale" wording. WavLens got a dark mode (light by default).
+Files changed: code/frontend/{layout/*, callbacks/{ptsne.py (new), select.py, render.py, state.py, panels.py}, engine/{ptsne.py (new), project.py, fit.py, analysis.py}, figures/{scatter,dist,roc,matrix}.py, assets/{style.css, theme.css (new), sync.js}, inspector.py, audio.py, theme.py, ids.py}; WavLens: js/wavlens.js, wavlens/__init__.py, tests/test_theme.py.
+Next: not restored from the old frontend — pair-score thresholds (cosine / normalized) and the centroid "approach" selector.

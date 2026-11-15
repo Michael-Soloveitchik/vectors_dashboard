@@ -1,4 +1,4 @@
-"""WavLens inside the inspector.
+"""WavLens in the audio dock (under the panels).
 
 ``/_wavlens?model=<m>&rows=<i>[,<j>]`` returns WavLens' standalone HTML
 (waveform ↔ mel-spectrogram, zoom, playhead, per-row mute, mix row) for
@@ -18,6 +18,7 @@ from .engine import DataHub
 
 _SIBLING = Path(__file__).resolve().parents[3] / "WavLens"
 MAX_SECONDS = 30.0
+ROW_PX = 44                     # one waveform row in the dock
 
 
 def _wavlens():
@@ -44,7 +45,7 @@ def _load(path: Path) -> tuple[np.ndarray, int]:
 
 
 def build_html(hub: DataHub, model: str, rows: tuple[int, ...],
-               names: tuple[str, ...]) -> str:
+               names: tuple[str, ...], theme: str | None = None) -> str:
     fr = hub.frame(model)
     clips = {}
     for r, name in zip(rows, names):
@@ -64,17 +65,21 @@ def build_html(hub: DataHub, model: str, rows: tuple[int, ...],
         return _page("WavLens is not importable — pip install -e "
                      "Projects/Visualizations/WavLens")
     sr_max = max(sr for _, sr in audio.values())
-    w = wl.show(audio=audio, height=84, sample_rate=sr_max,
+    w = wl.show(audio=audio, height=ROW_PX, sample_rate=sr_max,
                 fmax=min(8000, sr_max // 2))
-    return w.html(title="wavlens")
+    try:                       # WavLens with a dark mode (theme=)
+        return w.html(title="wavlens", theme=theme)
+    except TypeError:          # an older WavLens: light only
+        return w.html(title="wavlens")
 
 
 def register_routes(server, hub: DataHub) -> None:
     from flask import Response, request
 
     @lru_cache(maxsize=24)
-    def _cached(model: str, rows: tuple[int, ...], names: tuple[str, ...]):
-        return build_html(hub, model, rows, names)
+    def _cached(model: str, rows: tuple[int, ...], names: tuple[str, ...],
+                theme: str | None):
+        return build_html(hub, model, rows, names, theme)
 
     @server.route("/_wavlens")
     def _wavlens_route():
@@ -84,7 +89,9 @@ def register_routes(server, hub: DataHub) -> None:
             names = tuple(request.args.get("names", "").split("|"))
             if len(names) != len(rows):
                 names = tuple(f"audio_{i}" for i in range(len(rows)))
-            html = _cached(model, rows[:2], names[:2])
+            theme = request.cookies.get("vd_theme")   # set by sync.js
+            html = _cached(model, rows[:2], names[:2],
+                           theme if theme in ("light", "dark") else None)
         except Exception as exc:
             html = _page(f"audio unavailable: {type(exc).__name__}: {exc}")
         return Response(html, mimetype="text/html")

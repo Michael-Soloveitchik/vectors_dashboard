@@ -49,6 +49,11 @@ def norm_method(method: str | None) -> str:
     return (method or "PCA").strip().lower().replace("-", "")
 
 
+def norm_points(max_points) -> int:
+    lo, hi = MAX_POINTS_RANGE
+    return int(min(hi, max(lo, int(max_points or 4000))))
+
+
 def project(engine: Engine, frame: ModelFrame, method: str,
             params: dict, max_points: int,
             client: str | None = None) -> Projection:
@@ -56,10 +61,16 @@ def project(engine: Engine, frame: ModelFrame, method: str,
     PCA runs immediately; t-SNE / UMAP take a heavy slot and are dropped
     if the tab has already asked for a different projection."""
     m = norm_method(method)
-    if m not in ("pca", "tsne", "umap"):
+    if m not in ("pca", "tsne", "umap", "ptsne"):
         raise ValueError(f"unknown reduction {method!r}")
-    lo, hi = MAX_POINTS_RANGE
-    max_points = int(min(hi, max(lo, int(max_points or 4000))))
+    max_points = norm_points(max_points)
+    if m == "ptsne":                    # trained on demand (ptsne.py)
+        from . import ptsne
+        perp = float(params.get("perplexity", 30))
+        done = ptsne.info(engine, frame, perp, max_points)["rounds"]
+        return engine.projections.get(
+            (frame.name, m, perp, max_points, done),
+            lambda: ptsne.embed(engine, frame, perp, max_points))
     key = (frame.name, m, tuple(sorted(params.items())), max_points)
     engine.gate.want(client, "proj", key)
 
@@ -109,6 +120,25 @@ def centroid_xy(an: Analysis, proj: Projection) -> list[tuple[str, int, float, f
                 if vis:
                     p = proj.xy[vis].mean(axis=0)
                     out.append((lbl, j, float(p[0]), float(p[1])))
+    return out
+
+
+def class_ellipses(an: Analysis, proj: Projection, n_sigma: float = 2.0
+                   ) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """Per class: the n-sigma covariance ellipse of its displayed members
+    in the 2D view (how wide and in which direction the class spreads)."""
+    out = {}
+    t = an.true_idx[proj.rows]
+    ang = np.linspace(0.0, 2.0 * np.pi, 73)
+    circle = np.stack([np.cos(ang), np.sin(ang)])
+    for k, lbl in enumerate(an.labels):
+        pts = proj.xy[t == k]
+        if pts.shape[0] < 3:
+            continue
+        w, v = np.linalg.eigh(np.cov(pts.T))
+        e = pts.mean(axis=0)[:, None] + float(n_sigma) * (
+            v @ (np.sqrt(np.maximum(w, 0.0))[:, None] * circle))
+        out[lbl] = (e[0], e[1])
     return out
 
 

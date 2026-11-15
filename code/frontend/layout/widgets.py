@@ -79,14 +79,17 @@ def card(title: str, sub_id: str, tools: list, body, *, cls: str = "",
     head = [html.Div([html.Span(title, className="card-title"),
                       html.Span(id=sub_id, className="card-sub")],
                      className="card-heading"),
-            html.Div([*tools, html.Button(
+            html.Div([*tools, *([roles] if roles is not None else []),
+                      html.Button(html.Span(className="ico-max"),
+                                  className="btn btn-icon max-btn",
+                                  title="full screen — this panel as a big "
+                                        "window  (Esc to leave)"),
+                      html.Button(
                 "⌂", className="btn btn-icon home-btn",
                 title="reset zoom  (also: right-click the plot)")],
                 className="card-tools")]
     kids = [html.Div(head, className="card-head")]
     if legend:
         kids.append(html.Div(legend, className="card-legend"))
-    if roles is not None:          # what each mouse gesture does here
-        kids.append(html.Div(roles, className="card-legend"))
     kids.append(html.Div(body, className="card-body"))
     return html.Section(kids, className=f"card {cls}".strip())

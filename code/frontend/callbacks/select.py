@@ -36,17 +36,20 @@ def register(app, engine: Engine) -> None:
         Input(IDS.btn_inspector_close, "n_clicks"),
         Input(IDS.ctrl_model, "value"),
         Input({"type": "sel-row", "row": ALL}, "n_clicks"),
+        Input(IDS.op_pick, "data"),
         State(IDS.store_mods, "data"), State(IDS.ctrl_matrix_mode, "value"),
         State(IDS.store_focus, "data"), State(IDS.store_fit, "data"),
-        State(IDS.ctrl_labels, "value"), prevent_initial_call=True)
+        State(IDS.ctrl_labels, "value"), State(IDS.ctrl_click_mode, "value"),
+        prevent_initial_call=True)
     @trace
     def _click(sc_click, mx_click, roc_click, dist_click, _close, model,
-               _picked, mods, mode, prev, fit, label_keys):
+               _picked, op, mods, mode, prev, fit, label_keys, click_mode):
         """The one consumer of every plot click (it also clears clickData so
         the SAME point can be clicked again).
 
             click            inspect the vector / pair / class
             Ctrl+click       add or remove it from the selection
+                             (the "click" switch swaps these two)
             tree junction    select the classes under it
             ROC curve, distribution lane   that class's threshold moves there
         """
@@ -60,6 +63,10 @@ def register(app, engine: Engine) -> None:
             if not ctx.triggered[0]["value"] or model not in hub.models:
                 raise PreventUpdate        # list just (re)drawn
             return out({"model": model, "rows": [int(trig["row"])]})
+        if trig == IDS.op_pick:            # a ROC operating point (sync.js)
+            if not op or model not in hub.models:
+                raise PreventUpdate
+            return out({"model": model, "labels": [str(op["label"])]})
         if trig in (IDS.btn_inspector_close, IDS.ctrl_model):
             if not prev:
                 raise PreventUpdate
@@ -73,7 +80,7 @@ def register(app, engine: Engine) -> None:
             raise PreventUpdate            # our own clickData reset
         pt, fr = pts[0], hub.frame(model)
         cd = pt.get("customdata")
-        ctrl = bool((mods or {}).get("ctrl"))
+        ctrl = bool((mods or {}).get("ctrl")) != (click_mode == "select")
 
         def vectors(rows: list[int]):
             if ctrl:

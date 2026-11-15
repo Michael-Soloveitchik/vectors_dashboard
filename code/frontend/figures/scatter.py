@@ -13,8 +13,9 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from ..engine.analysis import Analysis, Decision
-from ..engine.project import Projection, accepted_hulls, centroid_xy
-from ..theme import BLUES, base_layout, class_colors, rgba, tokens
+from ..engine.project import (Projection, accepted_hulls, centroid_xy,
+                              class_ellipses)
+from ..theme import base_layout, class_colors, rgba, tokens
 from .common import XY, dyn, home
 
 GL_ABOVE = 2500
@@ -27,7 +28,8 @@ OWN_SCORE = "own-class score"
 def is_continuous(col: pd.Series) -> bool:
     return (pd.api.types.is_numeric_dtype(col)
             and not pd.api.types.is_bool_dtype(col) and col.nunique() > 12)
-AXIS_NAME = {"pca": "PC", "tsne": "t-SNE ", "umap": "UMAP "}
+AXIS_NAME = {"pca": "PC", "tsne": "t-SNE ", "umap": "UMAP ",
+             "ptsne": "p-t-SNE "}
 
 
 def _symbols(an: Analysis, d: Decision, rows: np.ndarray) -> np.ndarray:
@@ -46,6 +48,7 @@ def scatter_fig(an: Analysis, proj: Projection, d: Decision, *,
                 focus_labels: list[str] | None = None,
                 neighbour_rows: list[int] | None = None,
                 show_hull: bool = True, show_density: bool = False,
+                show_ellipses: bool = False, n_sigma: float = 2.0,
                 color_by: str | None = None) -> go.Figure:
     t = tokens(theme)
     rows, xy = proj.rows, proj.xy
@@ -143,6 +146,16 @@ def scatter_fig(an: Analysis, proj: Projection, d: Decision, *,
             legendgroup=lbl if by_class else None,
             name=f"{lbl} accepted envelope", meta=dyn(thr=XY)))
 
+    ells = class_ellipses(an, proj, n_sigma) if show_ellipses else {}
+    for lbl in an.labels:           # covariance ellipse (index-stable too)
+        ex, ey = ells.get(lbl, ([], []))
+        fig.add_trace(go.Scatter(
+            x=ex, y=ey, mode="lines", hoverinfo="skip", showlegend=False,
+            line=dict(color=cmap.get(lbl, t["neutral"]), width=1.4,
+                      dash="dot"),
+            legendgroup=lbl if by_class else None,
+            name=f"{lbl} {n_sigma:g}σ ellipse"))
+
     cents = centroid_xy(an, proj)
     emph = set(focus_labels or [])
     fig.add_trace(go.Scatter(
@@ -152,7 +165,7 @@ def scatter_fig(an: Analysis, proj: Projection, d: Decision, *,
                                            for c in cents],
                     color=[cmap.get(c[0], t["neutral"]) for c in cents],
                     line=dict(width=[3 if c[0] in emph else 1.6 for c in cents],
-                              color=[t["gold"] if c[0] in emph else t["text"]
+                              color=[t["ring"] if c[0] in emph else t["text"]
                                      for c in cents])),
         customdata=[[c[0], c[1] + 1] for c in cents],
         hovertemplate="<b>%{customdata[0]}</b> centroid "
@@ -165,15 +178,15 @@ def scatter_fig(an: Analysis, proj: Projection, d: Decision, *,
     fig.add_trace(go.Scatter(
         x=xy[fpts, 0] if fpts else [], y=xy[fpts, 1] if fpts else [],
         mode="markers", hoverinfo="skip", showlegend=False, name="focus",
-        marker=dict(symbol="circle-open", size=20,
-                    line=dict(width=2.5, color=t["gold"])),
+        marker=dict(symbol="circle-open", size=21,     # its own colour:
+                    line=dict(width=3, color=t["ring"])),  # no class has it
         meta=dyn(foc=XY, sel=SP)))
     npts = [pos[r] for r in (neighbour_rows or []) if r in pos]
     fig.add_trace(go.Scatter(
         x=xy[npts, 0] if npts else [], y=xy[npts, 1] if npts else [],
         mode="markers", hoverinfo="skip", showlegend=False, name="neighbours",
         marker=dict(symbol="circle-open", size=13,
-                    line=dict(width=1.3, color=t["gold"])),
+                    line=dict(width=1.5, color=t["ring"])),
         meta=dyn(foc=XY, sel=SP)))
 
     ax = AXIS_NAME.get(proj.method, "dim ")
@@ -198,7 +211,7 @@ def scatter_fig(an: Analysis, proj: Projection, d: Decision, *,
         legend=dict(x=1.01 if cont is None else 1.07, y=1, xanchor="left",
                     yanchor="top"),
         **({} if cont is None else {"coloraxis": dict(
-            colorscale=BLUES, colorbar=dict(
+            colorscale="Viridis", colorbar=dict(
                 thickness=8, len=0.6, x=1.0, xanchor="left", outlinewidth=0,
                 tickfont=dict(size=9, color=t["muted"]),
                 title=dict(text=color_by, side="right",

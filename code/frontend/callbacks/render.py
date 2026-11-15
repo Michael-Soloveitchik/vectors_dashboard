@@ -19,6 +19,7 @@ from ..engine import Engine, state
 from ..engine import curves as cv
 from ..engine import matrix as mx
 from ..engine.project import norm_method, project
+from ..engine.ptsne import NotTrained
 from ..ids import IDS
 from ..inspector import composition
 from ._util import chip, respond
@@ -65,13 +66,18 @@ def register(app, engine: Engine) -> None:
         if an is None:
             return msg, "", None, no_update
         m = norm_method(v["reduction"])
-        params = ({"perplexity": float(v["perplexity"] or 30)} if m == "tsne"
+        params = ({"perplexity": float(v["perplexity"] or 30)}
+                  if m in ("tsne", "ptsne")
                   else {"n_neighbors": int(v["n_nbrs"] or 15),
                         "min_dist": float(0.1 if v["min_dist"] is None
                                           else v["min_dist"])}
                   if m == "umap" else {})
-        proj = project(engine, an.frame, v["reduction"] or "PCA", params,
-                       v["max_pts"] or 4000, client=client)
+        try:
+            proj = project(engine, an.frame, v["reduction"] or "PCA", params,
+                           v["max_pts"] or 4000, client=client)
+        except NotTrained as exc:          # p-t-SNE before its first round
+            return (F.message_fig(str(exc), v["theme"]),
+                    "parametric t-SNE", None, no_update)
         rows, labels = state.focus_parts(an, v["focus"])
         nbrs = ([r for r, _ in state.neighbours(an, rows[0])]
                 if len(rows) == 1 else [])
@@ -82,9 +88,12 @@ def register(app, engine: Engine) -> None:
             sel_rows=state.sel_rows(an, v["sel"]), sel_rev=asp[F.SEL],
             focus_rows=rows, focus_labels=labels, neighbour_rows=nbrs,
             show_hull="hull" in opts, show_density="density" in opts,
+            show_ellipses="ellipses" in opts,
+            n_sigma=float(v["sigma"] or 2.0),
             color_by=None if v["color_by"] in (None, "class") else v["color_by"])
         sig = F.sig(v["fit"]["token"], v["alpha"], m, params, proj.rows.size,
-                    opts, v["color_by"], v["labels"], v["theme"])
+                    opts, v["sigma"], v["train"], v["color_by"], v["labels"],
+                    v["theme"])
         out, held, changed = respond(fig, sig, asp, held)
         if changed is not None:                    # patch or nothing
             if F.SEL in changed:               # the store owns the selection
@@ -141,8 +150,9 @@ def register(app, engine: Engine) -> None:
                + f" · {an.spec.methodology} score_XY")
         by = next((k for k in (v["sort"] or []) if k in an.frame.df.columns
                    and k != "session_id"), None)
+        order = " → ".join(f"{i}. {k}" for i, k in enumerate(v["sort"] or [], 1))
         return (F.vectors_fig(an, rows, focus_rows=frows, strip_by=by, **kw),
-                sub + (f" · blocks: {by}" if by else ""), sig)
+                sub + (f" · sorted by {order}" if order else ""), sig)
 
     @panel(app, "curves",
            [Output(IDS.fig_roc, "figure"), Output(IDS.sub_roc, "children"),
@@ -179,17 +189,20 @@ def register(app, engine: Engine) -> None:
         an, msg = analysis(v)
         if an is None:
             return msg, {"minHeight": "100%"}, "", None
-        view = v["view"] or "hist"
+        view, domain = v["view"] or "hist", v["domain"] or "norm"
         rows, _ = state.focus_parts(an, v["focus"])
         fig = F.dist_fig(an, alpha=v["alpha"], thr=state.thr_values(v["thr"]),
-                         theme=v["theme"], view=view,
+                         theme=v["theme"], view=view, domain=domain,
                          sel_rows=state.sel_rows(an, v["sel"]), focus_rows=rows)
-        sig = F.sig(v["fit"]["token"], v["alpha"], view, v["theme"])
+        sig = F.sig(v["fit"]["token"], v["alpha"], view, domain, v["theme"])
         out, held, changed = respond(fig, sig, aspects(v), held)
         if changed is not None:
             return out, no_update, no_update, held
         style = {"minHeight": f"{F.lane_height(an.k, view)}px"}
-        return fig, style, "own samples (colour) vs everyone else (grey)", held
+        sub = ("own samples (colour) vs everyone else (grey)"
+               + (" · whiskers 5–95 %" if view == "box" else "")
+               + (" · raw scores" if domain == "raw" else ""))
+        return fig, style, sub, held
 
     @panel(app, "summary",
            [Output(IDS.summary, "children"), Output(IDS.sel_summary, "children")],

@@ -127,3 +127,13 @@ Seen in: assets/sync.js
 Expected: `uirevision` keeps the user's zoom; "Reset axes" restores the first view.
 Implication: A trace appearing / disappearing makes Plotly drop the preserved zoom — keep the trace and flip `visible`. Plotly's "Reset axes" goes to its own autorange, not to a given range — store the home ranges in `layout.meta` and relayout to them.
 Seen in: frontend/figures/scatter.py, assets/sync.js:resetZoom
+
+[2026-11-15 19:30] Finding: With `hovermode="closest"` a click exactly on a ROC operating point reports the CURVE point under it, not the marker.
+Expected: The marker trace (drawn on top) wins the click.
+Implication: Plotly resolves ties by trace order, not by z-order. Clicks / drags on the spots are detected in `sync.js` from pixel distance and routed through their own stores (`op-pick`, `thr-pick`).
+Seen in: frontend/assets/sync.js (ROC drag), callbacks/select.py
+
+[2026-11-15 19:30] Finding: A dark mode for a canvas-heavy widget (WavLens) works as one CSS filter — `invert(.93) hue-rotate(180deg)` on the root, and the exact inverse `hue-rotate(180deg) invert(1) contrast(1.1628)` on pictures.
+Expected: Every colour literal (80+) and canvas colour would have to be themed.
+Implication: A partial invert pivots around mid-grey, so `invert(1) contrast(1/0.86)` undoes it exactly; spectrograms and speaker colours keep their true colours.
+Seen in: WavLens js/wavlens.js (theme)

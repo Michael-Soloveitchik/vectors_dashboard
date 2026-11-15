@@ -123,3 +123,103 @@
     if (el.className !== cls) { el.className = cls; }
   }, 100);
 })();
+
+/* Audio dock: fold / unfold, and WavLens follows the page theme (a cookie
+ * for the next frame the server renders, postMessage for the open ones). */
+(function () {
+  document.addEventListener('click', function (e) {
+    const b = e.target.closest && e.target.closest('.dock-toggle');
+    if (!b) { return; }
+    const d = b.closest('.dock');
+    const folded = d.classList.toggle('folded');
+    b.textContent = folded ? '▴' : '▾';
+  });
+  function pushTheme() {
+    const t = document.documentElement.getAttribute('data-theme');
+    if (t !== 'light' && t !== 'dark') { return; }
+    try { document.cookie = 'vd_theme=' + t + ';path=/;max-age=31536000;samesite=lax'; } catch (e) {}
+    document.querySelectorAll('iframe.wavlens').forEach(function (f) {
+      try { f.contentWindow.postMessage({wavlens_theme: t}, '*'); } catch (e) {}
+    });
+  }
+  new MutationObserver(pushTheme).observe(document.documentElement,
+    {attributes: true, attributeFilter: ['data-theme']});
+  document.addEventListener('load', function (e) {     // a new audio frame
+    if (e.target && e.target.classList && e.target.classList.contains('wavlens')) { pushTheme(); }
+  }, true);
+})();
+
+/* ROC: drag an operating point along its curve — that class's threshold
+ * follows (through the thr-pick store, like a click on the curve), and with
+ * it every panel. A press without movement inspects that class. */
+(function () {
+  let drag = null, last = 0;
+  const plot = function () { return document.querySelector('#fig-roc .js-plotly-plot'); };
+  function near(gd, t, e, maxd) {          // index of the trace point closest to the cursor
+    const fl = gd._fullLayout, r = gd.getBoundingClientRect();
+    let best = -1, bd = maxd;
+    for (let i = 0; i < t.x.length; i++) {
+      const d = Math.hypot(r.left + fl.xaxis._offset + fl.xaxis.c2p(t.x[i]) - e.clientX,
+                           r.top + fl.yaxis._offset + fl.yaxis.c2p(t.y[i]) - e.clientY);
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
+  document.addEventListener('mousedown', function (e) {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) { return; }
+    const gd = plot();
+    if (!gd || !gd._fullData || !gd.contains(e.target)) { return; }
+    const ops = gd._fullData.find(function (t) { return t.name === 'operating points'; });
+    const i = ops && ops.x ? near(gd, ops, e, 14) : -1;
+    if (i < 0) { return; }
+    drag = {label: ops.customdata[i][0], moved: false, x: e.clientX, y: e.clientY};
+    e.stopPropagation(); e.preventDefault();
+  }, true);
+  document.addEventListener('mousemove', function (e) {
+    if (!drag) { return; }
+    if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) { return; }
+    drag.moved = true; document.body.classList.add('vd-dragging');
+    const now = Date.now();
+    if (now - last < 80) { return; }
+    const gd = plot();
+    const curve = gd._fullData.find(function (t) {
+      return t.mode === 'lines' && t.customdata && t.customdata.length &&
+             t.customdata[0].length === 2 && t.customdata[0][0] === drag.label; });
+    const i = curve ? near(gd, curve, e, Infinity) : -1;
+    if (i < 0) { return; }
+    last = now;
+    window.dash_clientside.set_props('thr-pick', {data: {label: drag.label, thr: curve.customdata[i][1], seq: now}});
+  }, true);
+  document.addEventListener('mouseup', function (e) {
+    if (!drag) { return; }
+    const d = drag; drag = null;
+    document.body.classList.remove('vd-dragging');
+    e.stopPropagation();
+    if (!d.moved) {                         // a plain click on the spot
+      window.dash_clientside.set_props('op-pick', {data: {label: d.label, seq: Date.now()}});
+    }
+  }, true);
+})();
+
+/* Full screen: the ▢ button turns one panel into a big window; Esc (or the
+ * button again) puts it back. Plotly follows the new size by itself. */
+(function () {
+  function restore() {
+    document.querySelectorAll('.card.max').forEach(function (c) { c.classList.remove('max'); });
+    document.body.classList.remove('vd-max');
+  }
+  document.addEventListener('click', function (e) {
+    const b = e.target.closest && e.target.closest('.max-btn');
+    if (!b) { return; }
+    const card = b.closest('.card'), on = !card.classList.contains('max');
+    restore();
+    if (on) { card.classList.add('max'); document.body.classList.add('vd-max'); }
+    window.dispatchEvent(new Event('resize'));
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.querySelector('.card.max')) {
+      restore(); window.dispatchEvent(new Event('resize'));
+      e.stopPropagation();                    // Esc leaves full screen first
+    }
+  }, true);
+})();

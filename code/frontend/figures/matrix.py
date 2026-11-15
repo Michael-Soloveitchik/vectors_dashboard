@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 
 from ..engine import matrix as mx
 from ..engine.analysis import Analysis, Decision
-from ..theme import BLUES, base_layout, class_colors, tokens
+from ..theme import base_layout, class_colors, tokens
 from .common import message_fig
 
 SEP = "  ·  "          # "<session_id>  ·  <class>" — parsed back on click
@@ -51,7 +51,7 @@ def vectors_fig(an: Analysis, rows: np.ndarray, *, theme, abs_on, power,
     cls = an.y[rows].astype(str)
     names = [f"{an.frame.sids[r]}{SEP}{c}" for r, c in zip(rows, cls)]
     fig = go.Figure(go.Heatmap(
-        z=Z.astype(np.float32), x=names, y=names, colorscale=BLUES,
+        z=Z.astype(np.float32), x=names, y=names, colorscale="Viridis",
         zmin=zmin, zmax=zmax, colorbar=_colorbar(t, "score_XY"),
         hovertemplate="row  %{y}<br>col  %{x}<br>score  <b>%{z:.4f}</b>"
                       "<extra></extra>"))
@@ -91,7 +91,7 @@ def vectors_fig(an: Analysis, rows: np.ndarray, *, theme, abs_on, power,
         for kw in (dict(x0=-0.5, x1=n - 0.5, y0=i, y1=i),
                    dict(y0=-0.5, y1=n - 0.5, x0=i, x1=i)):
             shapes.append(dict(type="line", xref="x", yref="y",
-                               line=dict(color=t["gold"], width=1), **kw))
+                               line=dict(color=t["ring"], width=1.4), **kw))
     big = [r for r in rr if r[1] - r[0] >= max(1, 0.035 * n)] if ticks else []
     centers = [names[(s + e - 1) // 2] for s, e, _ in big]
     axis = dict(showticklabels=bool(big), tickmode="array", tickvals=centers,
@@ -122,7 +122,7 @@ def classes_fig(an: Analysis, *, theme, abs_on, power, auto_range,
     zmin, zmax = _zrange(Z, auto_range, lo, hi)
     small = len(names) <= 12
     fig = go.Figure(go.Heatmap(
-        z=Z, x=names, y=names, colorscale=BLUES, zmin=zmin, zmax=zmax,
+        z=Z, x=names, y=names, colorscale="Viridis", zmin=zmin, zmax=zmax,
         colorbar=_colorbar(t, "score_XY"),
         texttemplate="%{z:.2f}" if small else None,
         textfont=dict(size=10),
@@ -192,7 +192,7 @@ def confusion_fig(an: Analysis, d: Decision, sel_rows, *, theme) -> go.Figure:
     rate = counts / tot                      # normalised by TRUE class count
     small = len(rlab) <= 14
     fig = go.Figure(go.Heatmap(
-        z=rate, x=clab, y=rlab, colorscale=BLUES, zmin=0, zmax=1,
+        z=rate, x=clab, y=rlab, colorscale="Viridis", zmin=0, zmax=1,
         colorbar=_colorbar(t, "share of true class"),
         text=counts, texttemplate="%{text}" if small else None,
         textfont=dict(size=10),

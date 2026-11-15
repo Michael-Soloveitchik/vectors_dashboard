@@ -35,7 +35,7 @@ THEME_JS = """function(n, cur) {
         try { window.localStorage.setItem(KEY, t); } catch (e) {}
     }
     document.documentElement.setAttribute('data-theme', t);
-    return [t, t === 'dark' ? '☀' : '☾'];
+    return [t, t === 'dark' ? 'switch to light' : 'switch to dark'];
 }"""
 
 CLIENT_JS = """function(_) {
@@ -66,8 +66,10 @@ def register(app, engine: Engine) -> None:
                   + [c for c in extra if c not in cols and F.is_continuous(df[c])])
         sorts = list(SYNTHETIC_SORTS) + extra
         new_model = ctx.triggered_id in (IDS.ctrl_model, None)
-        sort = ["class"] if new_model else \
-            [k for k in (sort or []) if k in sorts]
+        # None = never set (two start-up runs of this callback can overlap,
+        # and only the last answer is applied): class blocks by default.
+        sort = ["class"] if new_model or sort is None else \
+            [k for k in sort if k in sorts]
         return (cols, keep, sorts, sort,
                 colour, color_by if color_by in colour else "class")
 
@@ -88,6 +90,10 @@ def register(app, engine: Engine) -> None:
             for c in keys:
                 opts.update(fr.df[c].astype(str).unique().tolist())
         opts = sorted(opts)
+        for c in hub.label_columns(model):     # filters: any column=value
+            vals = fr.df[c].astype(str).unique().tolist()
+            if c not in keys and len(vals) <= 40:
+                opts += [f"{c}={v}" for v in sorted(vals)]
         return opts, [s for s in (skip or []) if s in opts], classes
 
     @app.callback(
@@ -182,11 +188,13 @@ def register(app, engine: Engine) -> None:
     # ── small UI gates ──────────────────────────────────────────────
     @app.callback(
         Output(IDS.wrap_tsne, "className"), Output(IDS.wrap_umap, "className"),
-        Input(IDS.ctrl_reduction, "value"))
-    def _reduction_params(method):
+        Output(IDS.wrap_ptsne, "className"), Output(IDS.wrap_sigma, "className"),
+        Input(IDS.ctrl_reduction, "value"), Input(IDS.ctrl_scatter_opts, "value"))
+    def _reduction_params(method, opts):
         m = (method or "").lower().replace("-", "")
-        return ("tool-param" if m == "tsne" else "tool-param hidden",
-                "tool-param" if m == "umap" else "tool-param hidden")
+        show = lambda on: "tool-param" if on else "tool-param hidden"  # noqa: E731
+        return (show(m in ("tsne", "ptsne")), show(m == "umap"),
+                show(m == "ptsne"), show("ellipses" in (opts or [])))
 
     @app.callback(Output(IDS.wrap_matrix_sort, "className"),
                   Input(IDS.ctrl_matrix_mode, "value"))
@@ -195,7 +203,7 @@ def register(app, engine: Engine) -> None:
 
     app.clientside_callback(
         THEME_JS,
-        Output(IDS.store_theme, "data"), Output(IDS.btn_theme, "children"),
+        Output(IDS.store_theme, "data"), Output(IDS.btn_theme, "title"),
         Input(IDS.btn_theme, "n_clicks"), State(IDS.store_theme, "data"))
     app.clientside_callback(
         CLIENT_JS, Output(IDS.store_client, "data"),

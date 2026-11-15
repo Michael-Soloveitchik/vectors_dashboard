@@ -18,6 +18,8 @@ are not audited for concurrent use.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
+
 import threading
 from dataclasses import dataclass, field
 
@@ -180,6 +182,7 @@ class Engine:
         self.hub = hub
         self.fits = FlightCache("fits", max_entries)
         self.projections = FlightCache("projections", 12)
+        self.ptsne: OrderedDict = OrderedDict()   # p-t-SNE models (ptsne.py)
         self.gate = HeavyGate(heavy_slots)
 
     def analysis(self, spec: FitSpec | dict | None,

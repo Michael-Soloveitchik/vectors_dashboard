@@ -3,18 +3,20 @@ from __future__ import annotations
 
 TOKENS = {
     "dark": {
-        "bg": "#08101f", "panel": "#14213a", "raised": "#1c2c4c",
-        "border": "#2b3f66", "text": "#e6e9ef", "muted": "#9fb0cc",
-        "grid": "rgba(148,190,255,0.10)", "axis": "rgba(148,190,255,0.30)",
-        "accent": "#7ab8ff", "gold": "#f2c96b", "bad": "#ff8a8a",
-        "neutral": "#6f7f99", "hover_bg": "#14213a",
+        "bg": "#0a0e16", "panel": "#1d2332", "raised": "#262d3f",
+        "border": "#333b50", "text": "#e6e9ef", "muted": "#9aa3b5",
+        "grid": "rgba(255,255,255,0.07)", "axis": "rgba(255,255,255,0.22)",
+        "accent": "#60cdff", "gold": "#f5c542", "bad": "#ff7b7b",
+        "neutral": "#6b7385", "hover_bg": "#1d2332",
+        "ring": "#4d7cff",      # marks the clicked vector: no class has it
     },
     "light": {
-        "bg": "#e9f1fb", "panel": "#ffffff", "raised": "#f1f6fd",
-        "border": "#cfdcf0", "text": "#1c2330", "muted": "#5b6c88",
-        "grid": "rgba(47,111,208,0.10)", "axis": "rgba(47,111,208,0.32)",
-        "accent": "#2f6fd0", "gold": "#b7791f", "bad": "#c93c3c",
-        "neutral": "#97a6bd", "hover_bg": "#ffffff",
+        "bg": "#eef2f9", "panel": "#ffffff", "raised": "#f4f6fb",
+        "border": "#d5dbe8", "text": "#1c2330", "muted": "#5d6880",
+        "grid": "rgba(20,30,60,0.08)", "axis": "rgba(20,30,60,0.25)",
+        "accent": "#0067c0", "gold": "#b7791f", "bad": "#c93c3c",
+        "neutral": "#9aa3b5", "hover_bg": "#ffffff",
+        "ring": "#1e3a8a",
     },
 }
 
@@ -25,9 +27,6 @@ PALETTE = [
     "#ffb86b", "#7dd3c8", "#a3d977", "#c9a0dc", "#f7a8a0",
     "#8fc4ee", "#d4cc6a", "#8fe0b0", "#f5c0b8", "#b5d6f2",
 ]
-# Heat maps: one faded-blue ramp (dark navy → sky → near white).
-BLUES = [[0.0, "#0b1b3a"], [0.3, "#1e4b94"], [0.58, "#3f8cf0"],
-         [0.82, "#9fd0ff"], [1.0, "#f3f9ff"]]
 FONT = ("'Segoe UI Variable Text', 'Segoe UI', Inter, system-ui, "
         "-apple-system, sans-serif")
 MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"

@@ -70,7 +70,8 @@ def roc_fig(an: Analysis, *, alpha, thr: dict | None, theme,
         customdata=[[k, ops[k][2], ops[k][0], ops[k][1]] for k in keys],
         hovertemplate=("<b>%{customdata[0]}</b> operating point<br>"
                        "thr %{customdata[1]:.3f}<br>FPR %{customdata[2]:.4f}"
-                       "<br>TPR %{customdata[3]:.4f}<extra></extra>"),
+                       "<br>TPR %{customdata[3]:.4f}<br><i>drag along the "
+                       "curve to move it</i><extra></extra>"),
         meta=dyn(thr=XY + ["customdata"], foc=["marker"])))
 
     sc = cv.selection_curve(an, alpha, sel_rows)
@@ -116,5 +117,6 @@ def roc_fig(an: Analysis, *, alpha, thr: dict | None, theme,
                        "yaxis.range": list(ya["range"])}},
         legend=dict(x=1.01, y=1, xanchor="left", yanchor="top"),
         margin=dict(l=48, r=8, t=8, b=38),
+        hovermode="closest", hoverdistance=40,     # a curve is easy to hit
         uirevision=f"roc|{an.frame.name}|{det}|{log_x}|{log_y}"))
     return fig

@@ -17,7 +17,7 @@ vectors_dashboard/
 │       ├── gui.py         # Gui(df, …) · Gui.demo() · Gui.real() · Gui.from_arrays() · run/stop/url/analysis
 │       ├── server.py      # werkzeug server in a thread, stop / stop_all, never kills foreign ports
 │       ├── ids.py · theme.py · debug_log.py
-│       ├── assets/        # style.css (glass theme, light + dark) · sync.js (sync indicator, mouse roles, zoom reset)
+│       ├── assets/        # style.css (layout, glass tokens) · theme.css (Windows-style polish, switch, full screen) · sync.js (sync indicator, mouse roles, zoom reset, ROC spot drag, audio dock, full screen)
 │       ├── engine/        # compute core, no Dash
 │       │   ├── concurrency.py  FlightCache (LRU + single-flight) · KindCache · HeavyGate · freeze
 │       │   ├── data.py         DataHub / ModelFrame (unit-norm matrix per model, wav index)
@@ -25,7 +25,8 @@ vectors_dashboard/
 │       │   ├── fit.py          one fit; failures become cached error values
 │       │   ├── state.py        store contracts: token / model scoping, selection + focus validation, neighbours
 │       │   ├── curves.py       per-class OvR / pair / selection ROC, EER, operating points, DET
-│       │   ├── project.py      2D projection cache, centroid placement, accepted hulls
+│       │   ├── project.py      2D projection cache, centroid placement, accepted hulls, covariance ellipses
+│       │   ├── ptsne.py        parametric t-SNE (small network, trained on demand)
 │       │   └── matrix.py       row picking + sorting, score_XY matrix, centroid matrix, confusion
 │       ├── figures/       # pure builders: (Analysis, view state) → go.Figure
 │       ├── layout/        # sidebar.py · cards.py · widgets.py
@@ -37,9 +38,10 @@ vectors_dashboard/
 │       │   ├── selection.py    selection: one intent callback per source + reducer
 │       │   ├── select.py       click router (inspect / Ctrl+click / tree / click-to-threshold) · inspector
 │       │   ├── labels.py       the user's own labels (name the selection)
+│       │   ├── ptsne.py        the p-t-SNE "train" button
 │       │   └── export.py · _util.py
-│       ├── inspector.py   # drawer content (vector / pair / class, neighbours)
-│       └── audio.py       # /_wavlens route → WavLens standalone HTML in an iframe
+│       ├── inspector.py   # stats column content (vector / pair / class, neighbours)
+│       └── audio.py       # /_wavlens route → WavLens standalone HTML for the audio dock
 ├── DELETE_ME_LATER/       # test_engine.py · test_concurrency.py · test_cases.py · audit_sync.py · frontend_old/
 ├── summaries/ · dumps/ · logs/
 ```
@@ -86,7 +88,7 @@ Rules:
 
 Audit: `DELETE_ME_LATER/audit_sync.py <url> <n> <seed>` — random macro actions + a no-wait burst; after each transaction checks slider == distribution line == ROC operating point, hollow markers == Σ(1−TPR)·n, badge == chip == lit points, class sets, theme, focus.
 
-## Mouse roles (shown as pills under the projection and matrix headers)
+## Mouse roles (the round “i” in each card header lists them)
 
 | gesture | projection | vector matrix |
 |---|---|---|
@@ -98,7 +100,8 @@ Audit: `DELETE_ME_LATER/audit_sync.py <url> <n> <seed>` — random macro actions
 | right-click · ⌂ | reset zoom (exact home view) | reset zoom |
 | wheel | zoom | zoom |
 
-Click a point ON a class's ROC curve, or a spot in a class's distribution lane → that class's threshold moves there (all panels follow). `⌂ view` in the top bar: every zoom home, selection cleared, inspector closed.
+The projection's `click` switch swaps the first two rows: `inspect` (default) or `select` — in `select` a plain click adds / removes the point and Ctrl+click inspects.
+ROC: drag a ● operating point along its curve → that class's threshold follows the cursor (`sync.js` → `thr-pick`, ~12 updates / s); click anywhere near a curve → the threshold jumps to that point; click a ● → inspect the class (`op-pick`). A click in a class's distribution lane moves its threshold there. All panels follow. `⌂ view` in the top bar: every zoom home, selection cleared, inspector closed.
 Keys: `x` clear selection · `Esc` close inspector. Tree mode: click a junction → select its classes. ROC: click an operating point → inspect class (Ctrl → select it).
 Modifier keys are recorded on mouse-down by `assets/sync.js` (`store-mods`); Plotly events do not carry them.
 
@@ -123,6 +126,32 @@ Name the current selection (Selection → "my labels"). Stored as one extra colu
 
 Every plot has a fixed home view (`layout.meta.home`), restored exactly by ⌂ / right-click. Projection axes no longer autorange (the picture used to rescale when traces changed); the density trace is always present (hidden when off) because a trace appearing made Plotly drop the user's zoom. Zoom-out is bounded (`minallowed` / `maxallowed`): about half a span beyond the data.
 
+## Layout
+
+Top bar · sidebar · the 2×2 panel grid. Two parts appear on demand and never cover the panels:
+
+| part | where | content | closes |
+|---|---|---|---|
+| stats column | narrow, right of the grid | the inspected vector / pair / class: tags, metadata, score per class, neighbours | ✕ · Esc |
+| audio dock | full width, under all panels | WavLens for the inspected vector(s) — only when the data has audio | with the stats column; ▾ folds it to its title bar |
+
+Every card has a ▢ button: the panel becomes a big window over the page (Esc or the button again restores it).
+WavLens follows the page theme (cookie `vd_theme` for a new frame, `postMessage` for an open one) and also has its own sun / moon button.
+
+## Projection
+
+PCA · t-SNE · UMAP · **p-t-SNE** (parametric t-SNE, `engine/ptsne.py`): a small network trained with the t-SNE objective on the displayed rows. `▶ train` runs 300 gradient steps (CPU, ≤ 2 threads, ~5 s); press again to refine. The model is kept per (model, perplexity, max points); until the first round the panel says so.
+Overlays: accepted envelope · covariance ellipses (σ selectable) · density. The clicked vector is ringed in dark blue (`ring` token) — a colour no class has.
+
+## Score distribution
+
+Views: histogram · box (quartiles, whiskers 5–95 %) · samples. Scale: `normalized` (the 0 … 1 scale thresholds are set on; sidebar "score scale": linear ↔ rank) or `raw` (the methodology's own scores; each threshold line is drawn where it falls among them).
+
+## Matrix
+
+`sort by` takes several keys; they are numbered in the control and in the subtitle (1. class → 2. hierarchical): the first key makes the blocks, later keys order rows inside them. Keys: `class`, `hierarchical`, `random`, any label column, `my_label`.
+`skip from fit` accepts classes and `column=value` filters (e.g. `gender=female`).
+
 ## Serving and notebook display
 
 - `gui.run(mode="inline")` shows the dashboard in the notebook AND prints the URL(s) for a browser tab; `external` prints only; `tab` opens a local tab.
@@ -131,7 +160,7 @@ Every plot has a fixed home view (`layout.meta.home`), restored exactly by ⌂ /
 
 ## Look
 
-Fluent-style glass: translucent blurred panels (`backdrop-filter`), 14 px corners, soft shadow + top highlight, wallpaper glow; accent blue. Light / dark follow the OS, the choice is remembered. Tokens live in `assets/style.css` (`--glass`, `--raised`, `--accent`, …) and are mirrored for Plotly in `theme.py`.
+Windows-11-style widgets: translucent blurred panels (`backdrop-filter`), 12 px corners, lit top edge, soft header fade, quiet wallpaper glow; one accent blue; nothing animates by itself. Light / dark follow the OS, the sun / moon switch (top right) overrides and is remembered. Tokens live in `assets/style.css` (`--glass`, `--raised`, `--accent`, …) and are mirrored for Plotly in `theme.py`.
 
 ## What comparable tools do (survey, 2026-11-14)
 

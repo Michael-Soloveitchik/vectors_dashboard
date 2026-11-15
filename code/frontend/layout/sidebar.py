@@ -42,7 +42,8 @@ def build_sidebar(hub: DataHub, d: dict | None = None) -> html.Aside:
                 hint="several columns → joint classes"),
             field("skip from fit", dropdown(
                 IDS.ctrl_skip, [], [], multi=True, clearable=True,
-                placeholder="classes / values to exclude…")),
+                placeholder="classes / values to exclude…"),
+                hint="class · column=value"),
             field("max points drawn", number(
                 IDS.ctrl_max_points, int(d.get("max_points") or 4000), 200,
                 50000, 100, width=84),
@@ -84,9 +85,17 @@ def build_sidebar(hub: DataHub, d: dict | None = None) -> html.Aside:
                            title="accept everything"),
                 ]),
                 html.Div(id=IDS.threshold_panel, className="thr-panel"),
-                field("score normalization  α", _slider(
-                    IDS.ctrl_alpha, 1.0, step=0.05),
-                    hint="0 = min-max · 1 = ECDF rank"),
+                field("score scale", dcc.Slider(
+                    id=IDS.ctrl_alpha, min=0.0, max=1.0, value=1.0, step=0.05,
+                    marks={0: "linear", 0.5: "blend", 1: "rank"},
+                    updatemode="drag", className="slider slider-marked",
+                    tooltip={"placement": "bottom", "always_visible": False}),
+                    hint="how a raw score becomes 0 … 1"),
+                html.Div("linear = where the score lies between the lowest "
+                         "and the highest (gaps kept) · rank = the share of "
+                         "scores it beats. Thresholds are set on this scale; "
+                         "the distribution panel can show raw scores too.",
+                         className="note"),
             ],
             hint="normalized score",
         ),
