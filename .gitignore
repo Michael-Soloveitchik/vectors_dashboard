@@ -1,0 +1,11 @@
+# runtime output
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+logs/
+dumps/*.csv
+dumps/*.npz
+dumps/*.json
+
+# real embeddings (large, real speakers) — kept local
+data/embeddings/

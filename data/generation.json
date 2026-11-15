@@ -1,0 +1,224 @@
+{
+  // ======================================================================
+  // generation.json  —  single source of truth for the vocal-dashboard
+  // demo data generator. generate.py REFUSES to run if this file is missing.
+  // All macros live here; do not hardcode anything downstream.
+  //
+  // Comments (// ...) are stripped before JSON parsing.
+  //
+  // CONVENTION — ranges:
+  //   Two-element numeric arrays marked "*_range" OR used in fields that
+  //   semantically describe a count/interval are sampled UNIFORMLY from
+  //   [x, y] INCLUSIVE. Integer ranges draw integers, float ranges draw
+  //   floats. Fixed arrays of names/indices (e.g. "models", "figsize")
+  //   are NOT ranges — they are plain lists.
+  //     Example: "voices_per_multi_device": [2, 4]
+  //              -> each multi-voice device gets rng.integers(2, 5)
+  //                 (2, 3, or 4 voices, uniform).
+  //     Example: "within_cluster_std_range": [1.2, 3.6]
+  //              -> each cluster picks a std uniformly in [1.2, 3.6].
+  // ======================================================================
+
+  // Master RNG seed. Changing this reshuffles every downstream draw.
+  // Example: 42 -> deterministic; set to something else for a fresh realization.
+  "seed": 42,
+
+  // Base model families. Combined with `extensions` to form the full
+  // model_name list: ["PI_2_256", "PI_2_1024", "PI_3_256", ...]
+  // Example: ["PI_2", "PI_3", "S2"] x ["_256", "_1024"] -> 6 model names.
+  "models": ["PI_2", "PI_3", "S2"],
+
+  // Embedding-dim suffixes. parse_dim() strips everything before the last '_'
+  // and parses the remainder as int — so "_123" -> 123, "_512" -> 512, etc.
+  // Fully general: extend or rename freely.
+  "extensions": ["_256", "_1024"],
+
+  // ----------------------------------------------------------------------
+  // Voice/device topology
+  // ----------------------------------------------------------------------
+  // Total voices = len(single_voice_device_indices)
+  //              + len(multi_voice_device_indices) * voices_per_multi_device
+  // With the defaults below: 3*1 + 2*3 = 9 voices on 5 devices.
+  "topology": {
+    // How many physical devices exist. Must equal
+    // len(single_voice_device_indices) + len(multi_voice_device_indices).
+    "n_devices": 5,
+
+    // Device indices that host exactly ONE voice each.
+    // Example: [0, 1, 2] -> device_0, device_1, device_2 each get 1 voice.
+    "single_voice_device_indices": [],
+
+    // Device indices that host SEVERAL voices each (shared hardware).
+    // Example: [3, 4] -> device_3, device_4 each host voices_per_multi_device voices.
+    "multi_voice_device_indices": [0, 1, 2, 3, 4],
+
+    // How many voices each "multi" device hosts — RANGE [low, high] inclusive.
+    // Each multi device draws an integer uniformly from [low, high].
+    // Example: [2, 4] -> devices 3 and 4 each get 2, 3, or 4 voices.
+    "voices_per_multi_device": [3, 5]
+  },
+
+  // ----------------------------------------------------------------------
+  // How many samples per (voice, model) cluster — RANGE [low, high] inclusive
+  // ----------------------------------------------------------------------
+  // Each (voice_id, model_name) cluster draws its row count uniformly from
+  // this range (inclusive on both ends — see the convention note above).
+  // Example: [10, 21] -> 10..21 rows per cluster.
+  "sessions_per_voice_model": [10, 21],
+
+  // ----------------------------------------------------------------------
+  // Gaussian cluster parameters
+  // ----------------------------------------------------------------------
+  // Each (voice, model) cluster is either a single Gaussian or a
+  // K-component Gaussian mixture (K = n_mixture_components). The centroid
+  // stored in GaussianParams.centroid is the mean of the single Gaussian
+  // OR the weighted mean sum_k w_k * mean_k of the mixture components.
+  "gaussians": {
+    // Probability that a given (voice, model) cluster is drawn as a
+    // K-component mixture rather than a single Gaussian.
+    // Example: 0.35 -> ~19 of the 54 clusters will be mixtures.
+    "sample_from_mixture_prob": 0.35,
+
+    // Number of components (K) when a cluster IS a mixture. K must be >= 2.
+    // Example: 3 -> every mixture cluster is a 3-component GMM.
+    "n_mixture_components": 10,
+
+    // DISTRIBUTION = Gaussian N(0, between_cluster_mean_std) per coordinate.
+    // Each cluster's mean vector in R^dim is drawn as
+    //     mean ~ N(0, between_cluster_mean_std * I_dim)
+    // NOT uniform. Larger std -> clusters farther apart in the ambient space.
+    // Example: 4.0 -> expected |mean|_2 ~ 4 * sqrt(dim).
+    "between_cluster_mean_std": 2.0,
+
+    // DISTRIBUTION = Uniform over the [low, high] range below; each (voice,
+    // model) cluster picks its OWN scalar std, then per-coordinate samples
+    // are drawn as x ~ N(mean, std * I_dim). So: within-cluster noise is
+    // Gaussian with a per-cluster uniform-sampled width.
+    // Example: [1.2, 3.6] -> tight clusters ~1.2, wide clusters ~3.6.
+    "within_cluster_std_range": [4.7, 5.6],
+
+    // For mixture clusters: each component mean (k > 0) is offset from the
+    // first component's mean by a random vector with
+    //     std = between_cluster_mean_std * mixture_component_separation
+    // Example: 0.7 -> mixture components ~70% of mean_std apart.
+    "mixture_component_separation": 0.7,
+
+    // DISTRIBUTION = Dirichlet(alpha * 1_K). Mixture weights are drawn as
+    //     w ~ Dirichlet(alpha, alpha, ..., alpha)   (K entries)
+    // Large alpha (>1) -> balanced weights close to 1/K.
+    // Small alpha (<1) -> peaked weights, one component dominates.
+    // Example: 2.0 -> roughly balanced, no component drops below ~0.1.
+    "mixture_weight_dirichlet_alpha": 1.5
+  },
+
+  // ----------------------------------------------------------------------
+  // Device-level sphere geometry
+  // ----------------------------------------------------------------------
+  // Purpose: make per-device ROC show a MIX of easy and hard classes.
+  // Each (device, model) gets a base direction. Voices assigned to that
+  // device have their base mean drawn around that direction (so their
+  // post-L2-normalize samples are cosine-close to each other). Devices
+  // listed in the SAME `shared_direction_groups` entry get the IDENTICAL
+  // base direction — their sessions overlap in cosine space and are
+  // hard to separate, while devices outside any group stay separable.
+  //
+  // Example below pairs devices 3 and 4 (the two multi-voice devices),
+  // so per-device ROC for device_03 / device_04 drops while
+  // device_00/01/02 stay near-1.0.
+  //
+  // Omit this whole block to recover the old per-voice-independent
+  // draw (every voice's base mean sampled independently).
+  "device_geometry": {
+    // Lists of device indices that share a NEARBY (not identical) base
+    // direction on the sphere. Devices in the same entry cluster
+    // angularly around one group direction, controlled by
+    // `shared_group_device_offset_std` below.
+    // Example: [[3, 4]] -> device_03 and device_04 overlap in cosine.
+    // Example: [[0, 1], [3, 4]] -> two independent overlap groups.
+    "shared_direction_groups": [[3, 4]],
+
+    // ANGULAR spread of devices within a shared group, in units of
+    // between_cluster_mean_std. What matters here is cosine — we're
+    // on the unit sphere post-normalize — so this knob sets HOW mixed
+    // the group's devices look to each other. 0.0 = identical direction.
+    // With voice_offset_std small, 0.0 gives a toy-shaped ROC (~0.94 AUC)
+    // for same-group devices — see voice_offset_std below for the
+    // actual AUC target.
+    "shared_group_device_offset_std": 0.0,
+
+    // Per-voice offset from its device's base direction, in units of
+    // between_cluster_mean_std. Controls how concentrated same-device
+    // voices are on the sphere — and, combined with gdo=0, sets the
+    // observed one-vs-rest AUC for shared-group devices:
+    //   0.05 -> AUC ~ 0.97 (barely mixed)
+    //   0.10 -> AUC ~ 0.93 (toy-ROC-shaped, the current setting)
+    //   0.20 -> AUC ~ 0.80 (heavy mix)
+    //   0.50 -> AUC ~ 0.6  (near chance)
+    "voice_offset_std": 0.1
+  },
+
+  // ----------------------------------------------------------------------
+  // Post-processing of sampled vectors
+  // ----------------------------------------------------------------------
+  "post_processing": {
+    // If true, each sampled vector is divided by its L2 norm -> lives on
+    // the unit hypersphere. This matches how speaker embeddings are compared
+    // in practice (cosine similarity). Turn off to see raw Euclidean clusters.
+    // Example: true -> |x|_2 == 1 for every stored centroid vector.
+    "l2_normalize": true,
+
+    // Floor used in the L2 division to avoid 0/0 on degenerate samples.
+    // Example: 1e-12 -> effectively never triggers for non-zero vectors.
+    "l2_eps": 1.0e-12,
+
+    // Storage dtype for the sampled vectors.
+    // Example: "float32" -> 4 bytes/dim; swap to "float16" to halve memory.
+    "dtype": "float32"
+  },
+
+  // ----------------------------------------------------------------------
+  // Paths (relative to data/)
+  // ----------------------------------------------------------------------
+  "paths": {
+    // Sub-directory where df.csv lives.
+    // Example: "dfs" -> data/dfs/df.csv
+    "dfs_dir": "dfs",
+
+    // Sub-directory reserved for waveform files (currently unused).
+    // Example: "wavs" -> data/wavs/
+    "wavs_dir": "wavs",
+
+    // Filename for the base dataframe.
+    // Example: "df.csv" -> 807 rows with 3 columns.
+    "csv_name": "df.csv",
+
+    // Filename for the rendered dashboard PNG (written to data/).
+    // Example: "dashboard.png"
+    "dashboard_name": "dashboard.png"
+  },
+
+  // ----------------------------------------------------------------------
+  // Plot rendering
+  // ----------------------------------------------------------------------
+  "plot": {
+    // Matplotlib figure size in inches (width, height).
+    // Example: [16, 10] -> 2x3 subplots render comfortably at ~1600x1000 px.
+    "figsize": [16, 10],
+
+    // Output PNG dpi. Raise for publication figures.
+    // Example: 140 -> ~2200x1400 px at figsize [16, 10].
+    "dpi": 200,
+
+    // Scatter marker size for sampled points.
+    // Example: 34 -> compact clouds that don't overwhelm the centroid X.
+    "sample_marker_size": 24,
+
+    // Scatter marker size for the ground-truth centroid X.
+    // Example: 240 -> clearly dominates the sample cloud.
+    "centroid_marker_size": 140,
+
+    // Alpha for sampled points (centroid X stays at 1.0).
+    // Example: 0.55 -> density visible without obliterating the background.
+    "sample_alpha": 0.55
+  }
+}
